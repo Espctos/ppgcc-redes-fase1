@@ -6,6 +6,18 @@
 **Disciplina:** Projeto de Redes de Computadores  
 **Professor:** Rayner Gomes Sousa
 
+## Links de Entrega
+
+| Recurso | Link |
+|---------|------|
+| 📁 Repositório GitHub | https://github.com/Espctos/ppgcc-redes-fase1 |
+| 📊 Google Colab (análise) | _(cole aqui o link do Colab compartilhado)_ |
+| 💾 Google Drive (PCAPs) | _(cole aqui o link da pasta com os .pcap)_ |
+| 📄 Relatório Overleaf | _(cole aqui o link do projeto Overleaf)_ |
+
+> **Dados de captura:** Os arquivos `.pcap` não estão no GitHub por excederem 100 MB.
+> Estão disponíveis no Google Drive (link acima). Os CSVs exportados estão em `data/csv/`.
+
 ---
 
 ## Sumário
