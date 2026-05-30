@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+
+# Dados grandes (pcap pode ser muito pesado)
+data/pcap/
+data/logs/*.log
+
+# Manter CSVs, plots e métricas JSONL
+!data/csv/
+!data/plots/
+!data/logs/*.jsonl
+
+# Docker
+.dockerenv
+
+# VS Code / IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

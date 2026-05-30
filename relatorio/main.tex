@@ -1,0 +1,504 @@
+\documentclass[12pt]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[brazil]{babel}
+\usepackage{graphicx}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{geometry}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{float}
+
+\geometry{a4paper, top=3cm, bottom=2cm, left=3cm, right=2cm}
+
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  backgroundcolor=\color{gray!10},
+  frame=single,
+  breaklines=true,
+  columns=fullflexible,
+  keepspaces=true,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  keywordstyle=\color{blue},
+  commentstyle=\color{green!60!black},
+  stringstyle=\color{red!70!black},
+}
+
+\title{
+  \textbf{Análise Comparativa entre TCP e R-UDP com\\
+  Go-Back-N em Ambientes de Rede Degradados:\\
+  Uma Abordagem de Validação Cruzada via TCPDump}
+}
+
+\author{
+  Arthur Sabino Santos\\
+  Universidade Federal do Piauí (UFPI), Picos, Piauí, Brasil\\
+  \texttt{20261005029@ufpi.edu.br}
+}
+
+\date{Maio de 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+\noindent
+\textbf{Abstract.}
+\textit{This paper presents an experimental comparative analysis between TCP and
+Reliable UDP (R-UDP) implementing the Go-Back-N (GBN) sliding window protocol for
+file transfer under degraded network conditions. The infrastructure relies on Python
+sockets running inside Docker containers (Ubuntu 22.04), with network impairment
+injected via \texttt{tc qdisc netem} across three scenarios: 0\%/10\,ms,
+10\%/50\,ms, and 20\%/100\,ms of packet loss and delay. A cross-validation
+methodology confronts application-level metrics (throughput, transfer time,
+retransmissions) against network-level packet captures via \texttt{tcpdump}.
+Results show TCP reaching up to 487\,Mbps in ideal conditions, while R-UDP/GBN
+achieves only 4.7\,Mbps due to its fixed window and timeout-driven cascaded
+retransmissions — even with 0\% loss. In high-loss scenarios both protocols
+converge to sub-1\,Mbps rates. Cross-validation reveals network overhead
+between $+52\%$ and $+420\%$ above application bytes, dominated by GBN
+retransmissions rather than protocol headers.}
+\end{abstract}
+
+\vspace{6pt}
+
+\noindent
+\textbf{Resumo.}
+Este artigo apresenta uma análise experimental comparativa entre TCP e UDP Confiável
+(R-UDP) com janela deslizante Go-Back-N (GBN) para transferência de arquivos em
+condições de rede degradadas. A infraestrutura utiliza sockets Python em contêineres
+Docker (Ubuntu 22.04), com degradação injetada via \texttt{tc qdisc netem} em três
+cenários: 0\%/10\,ms, 10\%/50\,ms e 20\%/100\,ms de perda e atraso. Uma metodologia
+de validação cruzada confronta métricas de nível de aplicação (vazão, tempo de
+transferência, retransmissões) com capturas de rede obtidas via \texttt{tcpdump}.
+Os resultados mostram o TCP atingindo até 487\,Mbps em condições ideais, enquanto o
+R-UDP/GBN alcança apenas 4,7\,Mbps devido à janela fixa e às retransmissões
+em cascata disparadas por timeout — mesmo com 0\% de perda. Em cenários de alta
+perda, ambos convergem para taxas abaixo de 1\,Mbps. A validação cruzada revela
+\textit{overhead} de rede entre $+52\%$ e $+420\%$ acima dos bytes da aplicação,
+dominado pelas retransmissões GBN e não pelos cabeçalhos de protocolo.
+
+\vspace{10pt}
+\noindent\rule{\linewidth}{0.4pt}
+
+% ─────────────────────────────────────────────────────────────
+\section{Introdução}
+% ─────────────────────────────────────────────────────────────
+
+O desempenho de protocolos de transporte em redes com perdas é um tema central em
+Redes de Computadores e Sistemas Distribuídos. O TCP (\textit{Transmission Control
+Protocol}) oferece entrega confiável e controle de congestionamento sofisticado, mas
+seu mecanismo AIMD (\textit{Additive Increase Multiplicative Decrease}) reage
+fortemente a perdas, penalizando a vazão em redes de alta perda~\cite{kurose2017}.
+O UDP, por outro lado, é sem estado e sem garantias, sendo base para implementações
+customizadas de confiabilidade como o R-UDP.
+
+Dentre os mecanismos de janela deslizante para R-UDP, o Go-Back-N (GBN) representa
+o caso em que, ao detectar um erro no pacote de sequência $n$, o emissor retransmite
+\emph{toda} a janela a partir de $n$~\cite{tanenbaum2011}. Embora mais simples de
+implementar do que o Selective Repeat (SR), o GBN incorre em maior desperdício de
+banda quando a taxa de perda é elevada, pois pacotes corretamente recebidos após a
+falha são descartados e retransmitidos desnecessariamente.
+
+Este trabalho tem os seguintes objetivos:
+
+\begin{itemize}
+  \item Implementar cliente/servidor TCP e R-UDP/GBN em Python em contêineres
+        Docker com isolamento de rede;
+  \item Injetar condições de degradação controlada via \texttt{tc qdisc netem}
+        em três cenários;
+  \item Coletar métricas de nível de aplicação e de rede simultaneamente,
+        realizando validação cruzada;
+  \item Quantificar o overhead real e o impacto das retransmissões em cascata
+        na vazão observada.
+\end{itemize}
+
+O artigo está organizado da seguinte forma: a Seção~\ref{sec:relacionados}
+discute trabalhos relacionados; a Seção~\ref{sec:metodologia} descreve a metodologia
+e implementação; a Seção~\ref{sec:resultados} apresenta os resultados; e a
+Seção~\ref{sec:conclusao} conclui.
+
+% ─────────────────────────────────────────────────────────────
+\section{Trabalhos Relacionados}
+\label{sec:relacionados}
+% ─────────────────────────────────────────────────────────────
+
+A comparação entre TCP e variantes de UDP confiável é objeto de estudo há décadas.
+O protocolo QUIC~\cite{iyengar2021} implementa confiabilidade sobre UDP com
+multiplexação de streams e reconhecimentos seletivos, reduzindo o impacto de perdas
+em relação ao GBN por retransmitir apenas o pacote perdido.
+
+O TCP CUBIC~\cite{ha2008}, padrão em kernels Linux, utiliza uma função cúbica para
+ajuste de janela, suavizando a degradação em enlaces de alta largura de banda e
+alto atraso. Essa característica é relevante nos Cenários B e C deste trabalho, onde
+o TCP mantém ligeira vantagem sobre o GBN mesmo com perda de 10\%.
+
+A emulação de degradação via \texttt{netem} é amplamente empregada para reprodução
+controlada de condições de WAN em laboratório~\cite{hemminger2005}. A combinação com
+\texttt{tcpdump} para validação cruzada é prática recomendada para garantir
+fidelidade experimental~\cite{paxson1997}.
+
+% ─────────────────────────────────────────────────────────────
+\section{Metodologia e Implementação}
+\label{sec:metodologia}
+% ─────────────────────────────────────────────────────────────
+
+\subsection{Arquitetura do Sistema}
+
+O sistema é composto por servidor e cliente Python em contêineres Docker Ubuntu 22.04
+interligados por rede \textit{bridge} isolada (\texttt{172.21.0.0/24}). O servidor
+escuta nas portas TCP 5003 e UDP 5004. O cabeçalho de identificação
+\textbf{X-Custom-Auth} com valor \texttt{20261005029:Arthur Sabino Santos} é
+incluído nos metadados iniciais de cada transferência e visível nas capturas
+\texttt{tcpdump}.
+
+\subsection{Protocolo R-UDP com Go-Back-N}
+
+O pacote R-UDP implementado segue o seguinte formato:
+
+\begin{center}
+\texttt{| seq (4B) | flags (1B) | win\_base (4B) | crc32 (4B) | payload ($\leq$1400\,B) |}
+\end{center}
+
+O cabeçalho ocupa 13 bytes fixos. A integridade é verificada por CRC32, escolhido
+por sua eficiência computacional. Os flags definem: \texttt{DATA} (0x01),
+\texttt{ACK} (0x02), \texttt{FIN} (0x04) e \texttt{NAK} (0x08).
+
+O GBN opera com janela $W = 8$ pacotes e timeout $T = 0{,}3\,$s. O emissor mantém
+um \textbf{timer único} para o pacote base: ao expirar, retransmite toda a janela.
+O receptor descarta pacotes fora de ordem e envia NAK imediato.
+
+\begin{lstlisting}[language=Python, caption={Núcleo do Go-Back-N Sender}]
+while True:
+    # Preenche janela com novos pacotes
+    while next_seq <= total and next_seq < base + W:
+        send_packet(next_seq)
+        next_seq += 1
+
+    if base > total:
+        break  # todos confirmados
+
+    # Timer expirou: retransmite janela inteira
+    if time.perf_counter() - timer_start > TIMEOUT:
+        for s in range(base, next_seq):
+            send_packet(s)
+            retransmissions += 1
+        timer_start = time.perf_counter()
+\end{lstlisting}
+
+\subsection{Cenários de Degradação de Rede}
+
+Os três cenários foram injetados via \texttt{tc qdisc netem} na interface
+\texttt{eth0} do contêiner cliente:
+
+\begin{table}[H]
+  \centering
+  \caption{Cenários de degradação de rede}
+  \begin{tabular}{ccc}
+    \toprule
+    \textbf{Cenário} & \textbf{Perda de Pacotes} & \textbf{Atraso} \\
+    \midrule
+    A & 0\%  & 10\,ms  \\
+    B & 10\% & 50\,ms  \\
+    C & 20\% & 100\,ms \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{lstlisting}[language=bash, caption={Aplicação do Cenário C via tc}]
+tc qdisc del dev eth0 root 2>/dev/null || true
+tc qdisc add dev eth0 root netem delay 100ms loss 20%
+\end{lstlisting}
+
+\subsection{Coleta de Dados e Validação Cruzada}
+
+Para cada experimento foram coletadas duas fontes simultaneamente:
+
+\begin{enumerate}
+  \item \textbf{Aplicação}: tempo (\texttt{time.perf\_counter()}), vazão
+        $\left(\frac{\text{bytes}\times 8}{\text{tempo}\times 10^6}\ \text{Mbps}\right)$
+        e contagem de retransmissões;
+  \item \textbf{Rede (tcpdump)}: captura \texttt{.pcap} convertida a CSV via
+        Scapy, contabilizando bytes totais e duração.
+\end{enumerate}
+
+Cada experimento foi repetido 5 vezes por protocolo por cenário (30 execuções no
+total). O overhead é calculado conforme a Equação~\ref{eq:overhead}:
+
+\begin{equation}
+  \text{overhead}(\%) = \frac{\text{bytes}_\text{tcpdump} -
+  \text{bytes}_\text{app}}{\text{bytes}_\text{app}} \times 100
+  \label{eq:overhead}
+\end{equation}
+
+% ─────────────────────────────────────────────────────────────
+\section{Resultados e Discussão}
+\label{sec:resultados}
+% ─────────────────────────────────────────────────────────────
+
+\subsection{Vazão (Throughput)}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.85\textwidth]{throughput.png}
+  \caption{Throughput médio (Mbps) — TCP vs.\ R-UDP/GBN por cenário.
+           Barras de erro indicam desvio padrão ($n=5$).}
+  \label{fig:throughput}
+\end{figure}
+
+A Tabela~\ref{tab:throughput} consolida os resultados de vazão obtidos
+experimentalmente:
+
+\begin{table}[H]
+  \centering
+  \caption{Vazão média (Mbps) e desvio padrão por protocolo e cenário ($n=5$)}
+  \label{tab:throughput}
+  \begin{tabular}{cccc}
+    \toprule
+    \textbf{Cenário} & \textbf{Protocolo} & \textbf{Média (Mbps)} & \textbf{DP (Mbps)} \\
+    \midrule
+    \multirow{2}{*}{A (0\%/10\,ms)}   & TCP        & 487,30 & 342,10 \\
+                                       & R-UDP/GBN  &   4,74 &   4,04 \\
+    \midrule
+    \multirow{2}{*}{B (10\%/50\,ms)}  & TCP        &   0,71 &  0,036 \\
+                                       & R-UDP/GBN  &   0,26 &  0,007 \\
+    \midrule
+    \multirow{2}{*}{C (20\%/100\,ms)} & TCP        &   0,16 &  0,003 \\
+                                       & R-UDP/GBN  &   0,07 &  0,043 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+No Cenário A, o TCP atingiu média de \textbf{487,3\,Mbps} com alta variabilidade
+(DP\,=\,342\,Mbps), explorando a janela adaptativa CUBIC. O R-UDP/GBN registrou
+apenas \textbf{4,74\,Mbps} — limitado pela janela fixa de $W=8$ pacotes e,
+sobretudo, pelo alto número de retransmissões por timeout (média de 28.032
+retransmissões mesmo com 0\% de perda, conforme discutido na
+Seção~\ref{sec:retx}).
+
+Nos Cenários B e C, ambos os protocolos convergem para valores muito baixos (abaixo
+de 1\,Mbps), dominados pelo atraso e pelas perdas injetadas. O TCP ainda mantém
+vantagem de $\sim 2{,}7\times$ sobre o GBN no Cenário B e $\sim 2{,}3\times$
+no Cenário C, pois o mecanismo AIMD do TCP, embora penalizador, é mais eficiente
+do que o reenvio de janela inteira do GBN sob alta perda.
+
+\subsection{Tempo de Transferência}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.85\textwidth]{transfer_time.png}
+  \caption{Tempo médio de transferência (s) por protocolo e cenário.}
+  \label{fig:time}
+\end{figure}
+
+\begin{table}[H]
+  \centering
+  \caption{Tempo médio de transferência (s) por protocolo e cenário ($n=5$)}
+  \begin{tabular}{cccc}
+    \toprule
+    \textbf{Cenário} & \textbf{Protocolo} & \textbf{Média (s)} & \textbf{DP (s)} \\
+    \midrule
+    \multirow{2}{*}{A} & TCP       &    0,14 &   0,05 \\
+                        & R-UDP/GBN & 1133,18 & 1792,33 \\
+    \midrule
+    \multirow{2}{*}{B} & TCP       &  118,65 &   6,02 \\
+                        & R-UDP/GBN &  321,75 &   8,62 \\
+    \midrule
+    \multirow{2}{*}{C} & TCP       &  511,84 &   9,88 \\
+                        & R-UDP/GBN & 1816,13 & 1094,26 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+O GBN apresenta tempo de transferência drasticamente superior ao TCP no Cenário A:
+enquanto o TCP completa em frações de segundo, o GBN leva em média
+\textbf{1.133\,s} (com desvio altíssimo de 1.792\,s). Esse comportamento anômalo
+é explicado pelas retransmissões em cascata por timeout, discutidas na
+Seção~\ref{sec:retx}. No Cenário C, o GBN leva em média \textbf{1.816\,s} — mais
+de $3{,}5\times$ o tempo do TCP ($511\,s$), diferentemente do que se esperaria de
+um protocolo com janela constante.
+
+\subsection{Retransmissões R-UDP/GBN}
+\label{sec:retx}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.75\textwidth]{retransmissions.png}
+  \caption{Número médio de retransmissões R-UDP/GBN por cenário.}
+  \label{fig:retx}
+\end{figure}
+
+\begin{table}[H]
+  \centering
+  \caption{Retransmissões médias R-UDP/GBN por cenário ($n=5$)}
+  \begin{tabular}{ccc}
+    \toprule
+    \textbf{Cenário} & \textbf{Média} & \textbf{DP} \\
+    \midrule
+    A (0\%/10\,ms)   & 28.032 & — \\
+    B (10\%/50\,ms)  &  6.758 & — \\
+    C (20\%/100\,ms) & 44.047 & — \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+O resultado mais relevante é o número de \textbf{28.032 retransmissões no Cenário A},
+onde a perda nominal é de 0\%. Esse fenômeno decorre do timeout agressivo
+($T = 0{,}3\,$s): com RTT real de $\sim 20\,$ms, o timer expira antes de o ACK
+retornar em situações de alta carga, disparando o reenvio de toda a janela
+desnecessariamente. Isso demonstra uma limitação crítica do GBN com timer único
+e valor fixo: o timeout deve ser ajustado dinamicamente ao RTT estimado (via EWMA)
+para evitar desperdício de banda em redes sem perda.
+
+No Cenário C, as 44.047 retransmissões refletem as retransmissões em cascata:
+pacotes retransmitidos também sofrem 20\% de perda, gerando novas retransmissões.
+Pela equação do GBN, o número esperado de transmissões por pacote é:
+
+\begin{equation}
+  E[\text{tx/pacote}]_\text{GBN} = \frac{1}{(1-p)^W} =
+  \frac{1}{(0{,}8)^8} \approx 5{,}96
+  \label{eq:gbn_tx}
+\end{equation}
+
+Para 7.490 pacotes, esperaríamos $7.490 \times (5{,}96 - 1) \approx 37.130$
+retransmissões. O valor observado (44.047) supera a previsão analítica, evidenciando
+o efeito adicional dos timeouts agressivos somados às perdas.
+
+\subsection{Validação Cruzada: Aplicação vs.\ TCPDump}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.90\textwidth]{cross_validation.png}
+  \caption{Validação cruzada entre bytes medidos pela aplicação e pelo TCPDump.}
+  \label{fig:crossval}
+\end{figure}
+
+\begin{table}[H]
+  \centering
+  \caption{Validação cruzada: overhead de rede ($n=5$ execuções)}
+  \label{tab:crossval}
+  \begin{tabular}{cccc}
+    \toprule
+    \textbf{Cenário} & \textbf{Protocolo} & \textbf{Bytes TCPDump (MB)} & \textbf{Overhead (\%)} \\
+    \midrule
+    \multirow{2}{*}{A} & TCP        & 18,24 & $+82,4$ \\
+                        & R-UDP/GBN  & 34,69 & $+246,9$ \\
+    \midrule
+    \multirow{2}{*}{B} & TCP        & 15,25 & $+52,5$ \\
+                        & R-UDP/GBN  & 31,11 & $+211,1$ \\
+    \midrule
+    \multirow{2}{*}{C} & TCP        & 27,11 & $+171,1$ \\
+                        & R-UDP/GBN  & 52,00 & $+420,0$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Os valores de overhead são substancialmente superiores aos previstos pelos
+cabeçalhos de protocolo ($13\,\text{B}/1400\,\text{B} \approx 0{,}9\%$ para GBN),
+revelando que as \textbf{retransmissões dominam o tráfego capturado}, especialmente
+no GBN. O overhead de $+246{,}9\%$ no Cenário A confirma que o tcpdump captura os
+28.032 pacotes retransmitidos desnecessariamente, inflando o volume de rede para
+$3{,}5\times$ o tamanho real do arquivo.
+
+O overhead TCP no Cenário A ($+82{,}4\%$) é explicado pelo efeito inverso ao
+\textit{TCP segment coalescing}: neste ambiente virtual em alta velocidade, o
+tcpdump captura pacotes de controle (SYN, ACK, FIN) e retransmissões TCP em maior
+proporção relativa, além de eventuais segmentos duplicados na interface
+\textit{bridge} Docker.
+
+\subsection{Comparativo Geral}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.90\textwidth]{heatmap.png}
+  \caption{Heatmap de métricas por protocolo e cenário.}
+  \label{fig:heatmap}
+\end{figure}
+
+O heatmap consolida que o TCP é superior ao R-UDP/GBN em todos os cenários testados.
+Diferentemente do Selective Repeat — onde o R-UDP pode superar o TCP em alta perda —
+o GBN nunca inverte a vantagem do TCP, pois suas retransmissões de janela inteira
+consomem mais banda do que o recuo de janela do AIMD consome em tempo.
+
+% ─────────────────────────────────────────────────────────────
+\section{Conclusão}
+\label{sec:conclusao}
+% ─────────────────────────────────────────────────────────────
+
+Este trabalho apresentou uma análise experimental comparativa entre TCP e R-UDP/GBN
+em três cenários de degradação de rede, com validação cruzada entre métricas de
+aplicação e de rede. Os principais resultados foram:
+
+\begin{enumerate}
+  \item No Cenário A (0\% de perda), o TCP superou o R-UDP/GBN por fator de
+        $\sim\!103\times$ em throughput (487\,Mbps vs.\ 4,7\,Mbps), evidenciando
+        que o GBN com timeout fixo causa retransmissões massivas ($\sim\!28.000$)
+        mesmo sem perdas de rede;
+
+  \item Nos Cenários B e C, o TCP manteve vantagem de $2{,}3$--$2{,}7\times$ sobre
+        o GBN, pois o reenvio de janela inteira do GBN é mais custoso que o recuo
+        de janela do AIMD;
+
+  \item O número de retransmissões GBN cresceu de forma super-linear com a taxa de
+        perda, superando a previsão analítica em 18\% no Cenário C devido ao efeito
+        combinado de cascata e timeouts agressivos;
+
+  \item A validação cruzada revelou overhead dominado pelas retransmissões
+        ($+247\%$ a $+420\%$ para GBN), não pelos cabeçalhos de protocolo.
+\end{enumerate}
+
+Como trabalho futuro, propõe-se: (i) ajuste dinâmico do timeout via EWMA do RTT
+estimado, para eliminar retransmissões espúrias no Cenário A; (ii) comparação com
+Selective Repeat para quantificar o ganho da retransmissão seletiva; e (iii)
+validação com o simulador SimPy (Fase 2) para confrontar os resultados empíricos
+com modelos estocásticos de perda de Bernoulli.
+
+O código-fonte, dados e notebooks estão disponíveis em:
+\url{https://github.com/arthur-sabino/ppgcc-redes-fase1}
+
+% ─────────────────────────────────────────────────────────────
+\bibliographystyle{plain}
+\begin{thebibliography}{99}
+
+\bibitem{ha2008}
+Ha, S., Rhee, I., and Xu, L. (2008).
+\newblock CUBIC: A new TCP-friendly high-speed TCP variant.
+\newblock \textit{ACM SIGOPS Operating Systems Review}, 42:64--74.
+
+\bibitem{hemminger2005}
+Hemminger, S. (2005).
+\newblock Network emulation with netem.
+\newblock Technical report, Linux Foundation. Proceedings of Linux Conf Australia.
+
+\bibitem{iyengar2021}
+Iyengar, J. and Thomson, M. (2021).
+\newblock QUIC: A UDP-based multiplexed and secure transport.
+\newblock RFC 9000, IETF.
+
+\bibitem{kurose2017}
+Kurose, J.~F. and Ross, K.~W. (2017).
+\newblock \textit{Computer Networking: A Top-Down Approach}.
+\newblock Pearson, 7th edition.
+
+\bibitem{paxson1997}
+Paxson, V. (1997).
+\newblock Measurements and analysis of end-to-end Internet dynamics.
+\newblock PhD Thesis, UC Berkeley.
+
+\bibitem{tanenbaum2011}
+Tanenbaum, A.~S. and Wetherall, D. (2011).
+\newblock \textit{Computer Networks}.
+\newblock Prentice Hall, 5th edition.
+
+\end{thebibliography}
+
+\end{document}

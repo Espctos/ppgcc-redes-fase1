@@ -1,0 +1,7 @@
+scenario,protocol,app_bytes_MB,net_bytes_MB,overhead_pct
+A (0%/10ms),TCP,10.0,18.24,82.43
+B (10%/50ms),TCP,10.0,15.25,52.5
+C (20%/100ms),TCP,10.0,27.11,171.05
+A (0%/10ms),R-UDP/GBN,10.0,34.69,246.87
+B (10%/50ms),R-UDP/GBN,10.0,31.11,211.1
+C (20%/100ms),R-UDP/GBN,10.0,52.0,420.0

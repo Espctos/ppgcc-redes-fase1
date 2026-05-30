@@ -1,0 +1,7 @@
+scapy>=2.5
+plotly>=5.18
+seaborn>=0.13
+pandas>=2.1
+matplotlib>=3.8
+numpy>=1.26
+kaleido>=0.2

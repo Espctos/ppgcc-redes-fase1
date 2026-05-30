@@ -1,0 +1,44 @@
+version: "3.9"
+
+networks:
+  labnet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/24
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gbn_server
+    hostname: server
+    networks:
+      labnet:
+        ipv4_address: 172.21.0.10
+    volumes:
+      - ../src:/app
+      - ../data:/data
+    command: python3 /app/server.py --mode both
+    cap_add:
+      - NET_ADMIN
+
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gbn_client
+    hostname: client
+    networks:
+      labnet:
+        ipv4_address: 172.21.0.20
+    volumes:
+      - ../src:/app
+      - ../data:/data
+      - ../scripts:/scripts
+    depends_on:
+      - server
+    cap_add:
+      - NET_ADMIN
+    command: tail -f /dev/null
