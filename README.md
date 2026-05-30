@@ -11,8 +11,8 @@
 | Recurso | Link |
 |---------|------|
 | 📁 Repositório GitHub | https://github.com/Espctos/ppgcc-redes-fase1 |
-| 📊 Google Colab (análise) | _(cole aqui o link do Colab compartilhado)_ |
-| 💾 Google Drive (PCAPs) | _(cole aqui o link da pasta com os .pcap)_ |
+| 📊 Google Colab (análise) | https://colab.research.google.com/drive/1HWf3P__ADtXFDSOxaJB1Ba_m5-DqDNkv?usp=sharing |
+| 💾 Google Drive (PCAPs) | https://drive.google.com/file/d/1_tPRM87EihzD0UE5tKY-g80yRTOlFOAG/view?usp=sharing |
 | 📄 Relatório Overleaf | _(cole aqui o link do projeto Overleaf)_ |
 
 > **Dados de captura:** Os arquivos `.pcap` não estão no GitHub por excederem 100 MB.
