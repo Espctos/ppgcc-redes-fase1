@@ -1,5 +1,5 @@
 # PPGCC/UFPI — Projeto de Redes de Computadores 2026-1
-## Fase 1: TCP vs. R-UDP com Go-Back-N em Ambientes Degradados
+## Fases 1 e 2: TCP vs. R-UDP/GBN + Modelagem Estocástica (SimPy)
 
 **Aluno:** Arthur Sabino Santos  
 **Matrícula:** 20261005029  
@@ -11,9 +11,12 @@
 | Recurso | Link |
 |---------|------|
 | 📁 Repositório GitHub | https://github.com/Espctos/ppgcc-redes-fase1 |
-| 📊 Google Colab (análise) | https://colab.research.google.com/drive/1HWf3P__ADtXFDSOxaJB1Ba_m5-DqDNkv?usp=sharing |
+| 📊 Google Colab — Fase 1 | https://colab.research.google.com/drive/1HWf3P__ADtXFDSOxaJB1Ba_m5-DqDNkv?usp=sharing |
 | 💾 Google Drive (PCAPs) | https://drive.google.com/file/d/1_tPRM87EihzD0UE5tKY-g80yRTOlFOAG/view?usp=sharing |
-| 📄 Relatório Overleaf | _(cole aqui o link do projeto Overleaf)_ |
+| 📓 Google Colab — Fase 2 (SimPy) | `analysis/analysis_fase2.ipynb` (abrir no Colab pelo GitHub) |
+
+> **Fase 1** — Entregue em 29/05/2026  
+> **Fase 2** — Entregue em 25/06/2026
 
 > **Dados de captura:** Os arquivos `.pcap` não estão no GitHub por excederem 100 MB.
 > Estão disponíveis no Google Drive (link acima). Os CSVs exportados estão em `data/csv/`.
@@ -23,22 +26,58 @@
 ## Sumário
 
 1. [Visão Geral](#visão-geral)
-2. [Pré-requisitos](#pré-requisitos)
-3. [Configuração Rápida (nome/matrícula)](#configuração-rápida)
+2. [Fase 2 — SimPy](#fase-2--simpy)
+3. [Pré-requisitos](#pré-requisitos)
 4. [Estrutura do Projeto](#estrutura-do-projeto)
-5. [Executando os Testes](#executando-os-testes)
-6. [Verificando o X-Custom-Auth no PCAP](#verificando-o-x-custom-auth)
-7. [Gerando os Gráficos](#gerando-os-gráficos)
+5. [Executando os Testes (Fase 1)](#executando-os-testes)
+6. [Executando a Simulação (Fase 2)](#executando-a-simulação-fase-2)
+7. [Verificando o X-Custom-Auth no PCAP](#verificando-o-x-custom-auth)
 8. [Protocolo R-UDP/GBN — Detalhes Técnicos](#protocolo-r-udpgbn)
-9. [Resultados Esperados](#resultados-esperados)
 
 ---
 
 ## Visão Geral
 
 Este projeto implementa transferência de arquivos via **TCP** e **R-UDP com Go-Back-N**
-em contêineres Docker Ubuntu 22.04. O controle de rede é feito por `tc qdisc netem`
-e a inspeção de tráfego por `tcpdump`. Os resultados são analisados com Plotly/Seaborn.
+em contêineres Docker Ubuntu 22.04 (**Fase 1**) e um simulador de eventos discretos
+SimPy que espelha o protocolo R-UDP/GBN (**Fase 2**).
+
+---
+
+## Fase 2 — SimPy
+
+### Executando a Simulação
+
+```bash
+# Instalar dependências
+pip install simpy numpy matplotlib seaborn scipy
+
+# Demo rápida (uma execução por cenário)
+python simulation/run_simulation.py --demo
+
+# IC 95% com 30 execuções por cenário
+python simulation/run_simulation.py --ci
+
+# Todas as 10 tarefas + gráficos em simulation/plots/
+python simulation/run_simulation.py --all
+```
+
+### 10 Tarefas de Validação
+
+| Tarefa | Descrição |
+|--------|-----------|
+| 1 | Modelagem de Atraso — Distribuição Normal |
+| 2 | Modelo de Perda de Bernoulli |
+| 3 | Simulação de Timeout (retransmissões) |
+| 4 | Curva de Vazão (1MB–100MB) |
+| 5 | Sensibilidade da Janela W |
+| 6 | Validação de RTT |
+| 7 | Impacto do Jitter |
+| 8 | Cenário de Estresse (25% perda) |
+| 9 | Análise de Eficiência |
+| 10 | Convergência Estatística (IC 95%, 30 runs) |
+
+---
 
 **Diferenças em relação ao Selective Repeat:**
 
@@ -85,21 +124,27 @@ ppgcc-redes-fase1/
 │   └── client.py          # Cliente TCP + R-UDP/GBN
 ├── docker/
 │   ├── Dockerfile         # Ubuntu 22.04 + Python + iproute2 + tcpdump
-│   └── docker-compose.yml # Rede 172.21.0.0/24, server:172.21.0.10, client:172.21.0.20
+│   └── docker-compose.yml # Rede 172.21.0.0/24
 ├── scripts/
 │   ├── run_tests.sh       # Orquestra os 3 cenários com tcpdump
 │   ├── pcap_to_csv.py     # Converte .pcap → .csv via Scapy
 │   └── verify_auth.sh     # Verifica X-Custom-Auth nos PCAPs
+├── simulation/            # [FASE 2] Simulador SimPy
+│   ├── simulator.py       # Núcleo GBN SimPy (modelo de canal + eventos)
+│   ├── tasks.py           # 10 tarefas de validação + gráficos
+│   ├── run_simulation.py  # Entry point (--demo, --ci, --all)
+│   └── plots/             # Gráficos gerados pela Fase 2
 ├── analysis/
-│   └── analysis.py        # Gráficos Plotly + Seaborn
-├── data/                  # Criado automaticamente
-│   ├── logs/              # .jsonl com métricas de aplicação
-│   ├── pcap/              # Capturas tcpdump
-│   ├── csv/               # CSVs exportados dos PCAPs
-│   └── plots/             # Gráficos gerados
+│   ├── analysis.py            # Gráficos Fase 1 (Plotly + Seaborn)
+│   ├── analysis_colab.ipynb   # Notebook Colab — Fase 1
+│   └── analysis_fase2.ipynb   # Notebook Colab — Fase 2 (SimPy)
+├── data/
+│   ├── logs/              # .jsonl métricas de aplicação
+│   ├── csv/               # CSVs dos PCAPs
+│   └── plots/             # Gráficos Fase 1
 ├── relatorio/
-│   └── main.tex           # Artigo LaTeX (template SBC)
-├── run_all.sh             # Pipeline completo (host)
+│   └── main.tex           # Artigo LaTeX (template SBC) — Fases 1 e 2
+├── run_all.sh
 └── requirements.txt
 ```
 
