@@ -299,51 +299,55 @@ def task5_window_sensitivity() -> str:
 # ════════════════════════════════════════════════════════════════════════════
 def task6_rtt_validation() -> str:
     """
-    Compara RTT médio do simulador com RTT esperado (2 × delay_mean do tc).
-    RTT real implícito estimado a partir do tempo de transferência da Fase 1.
+    Compara o RTT médio do simulador com o RTT configurado (2 × delay do tc).
+
+    O RTT é validado de forma limpa apenas no Cenário A (sem perda), onde o
+    RTT real implícito = W × chunk × 8 / throughput reflete diretamente a
+    latência. Nos Cenários B e C, a vazão é dominada por retransmissões e
+    stalls de timeout, tornando a estimativa por vazão não-representativa do
+    RTT; por isso comparamos Configurado vs Simulado nesses casos.
     """
     print("[Tarefa 6] Validação de RTT...")
 
     scenarios = ['A', 'B', 'C']
-    rtt_config = []  # 2 × delay_mean configurado
-    rtt_sim    = []  # RTT médio do simulador
+    rtt_config  = []  # 2 × delay configurado (tc)
+    rtt_sim     = []  # RTT médio medido no simulador
     rtt_sim_std = []
-    rtt_real   = []  # RTT implícito dos dados reais
 
     for sc in scenarios:
         p = SCENARIOS[sc]
-        rtt_config.append(2 * p['delay_mean'] * 1000)  # ms
-
-        # RTT simulado (média de 10 runs)
-        rtts = []
-        for seed in range(10):
-            r = simulate_gbn(seed=seed, **p)
-            rtts.append(r['rtt_mean'] * 1000)
+        rtt_config.append(2 * p['delay_mean_s'] * 1000)  # ms
+        rtts = [simulate_gbn(seed=seed, **p)['rtt_mean'] * 1000 for seed in range(10)]
         rtt_sim.append(np.mean(rtts))
         rtt_sim_std.append(np.std(rtts))
 
-        # RTT real estimado: RTT = W × chunk_size × 8 / (throughput_bps)
-        # Deriva o RTT efetivo a partir da vazão e janela
-        tp_mean = np.mean(REAL_RUDP[sc]['throughputs']) * 1e6  # bits/s
-        rtt_implied = (WINDOW_SIZE * CHUNK_SIZE * 8) / tp_mean * 1000  # ms
-        rtt_real.append(rtt_implied)
+    # RTT real implícito — válido apenas no Cenário A (sem perda/timeout)
+    tp_A = np.mean(REAL_RUDP['A']['throughputs']) * 1e6  # bits/s
+    rtt_real_A = (WINDOW_SIZE * CHUNK_SIZE * 8) / tp_A * 1000  # ms
 
     fig, ax = plt.subplots(figsize=(9, 6))
     x = np.arange(len(scenarios))
-    w = 0.26
+    w = 0.38
 
-    ax.bar(x - w, rtt_config, w, label='Configurado (2×tc delay)', color='#9E9E9E', alpha=0.85)
-    ax.bar(x,     rtt_real,   w, label='Real (implícito, Fase 1)',  color='#2196F3', alpha=0.85)
-    ax.errorbar(x + w, rtt_sim, yerr=rtt_sim_std, fmt='s',
-                color='#FF9800', ms=8, capsize=5, lw=2,
-                label='Simulado (SimPy)')
-    ax.bar(x + w, rtt_sim, w, label='_nolegend_', color='#FF9800', alpha=0.85)
+    ax.bar(x - w/2, rtt_config, w, label='Configurado (2×tc delay)',
+           color='#9E9E9E', alpha=0.85)
+    ax.bar(x + w/2, rtt_sim, w, yerr=rtt_sim_std, capsize=5,
+           label='Simulado (SimPy)', color='#FF9800', alpha=0.85)
+
+    # Marcador do RTT real implícito (Cenário A — único válido)
+    ax.plot(0 - w/2, rtt_real_A, 'D', color='#2196F3', ms=11, zorder=5,
+            label=f'Real Cenário A (~{rtt_real_A:.0f} ms ≈ 1×delay)')
+    ax.annotate(f'{rtt_real_A:.0f} ms\n(≈ 1× delay,\ntc unidirecional)',
+                xy=(0 - w/2, rtt_real_A), xytext=(0.4, 60),
+                fontsize=8, ha='left',
+                arrowprops=dict(arrowstyle='->', color='#2196F3'))
 
     ax.set_xticks(x)
     ax.set_xticklabels([f'Cenário {s}' for s in scenarios])
     ax.set_ylabel('RTT (ms)')
-    ax.set_title('Tarefa 6: Validação de RTT\nRTT Configurado vs Real (Fase 1) vs Simulado')
-    ax.legend()
+    ax.set_title('Tarefa 6: Validação de RTT\nConfigurado vs Simulado '
+                 '(RTT real válido apenas no Cenário A)')
+    ax.legend(fontsize=8)
     return _savefig('task6_rtt_validation.png')
 
 

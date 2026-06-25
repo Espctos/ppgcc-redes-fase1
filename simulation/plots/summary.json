@@ -1,0 +1,16 @@
+{
+  "plots": {
+    "task1": "C:\\Users\\espct\\Downloads\\ppgcc-redes-fase1\\simulation\\plots\\task1_delay_modeling.png",
+    "task2": "C:\\Users\\espct\\Downloads\\ppgcc-redes-fase1\\simulation\\plots\\task2_bernoulli_loss.png",
+    "task3": "C:\\Users\\espct\\Downloads\\ppgcc-redes-fase1\\simulation\\plots\\task3_timeout_simulation.png",
+    "task4": "C:\\Users\\espct\\Downloads\\ppgcc-redes-fase1\\simulation\\plots\\task4_throughput_curve.png",
+    "task5": "C:\\Users\\espct\\Downloads\\ppgcc-redes-fase1\\simulation\\plots\\task5_window_sensitivity.png",
+    "task6": "C:\\Users\\espct\\Downloads\\ppgcc-redes-fase1\\simulation\\plots\\task6_rtt_validation.png",
+    "task7": "C:\\Users\\espct\\Downloads\\ppgcc-redes-fase1\\simulation\\plots\\task7_jitter_impact.png",
+    "task8": "C:\\Users\\espct\\Downloads\\ppgcc-redes-fase1\\simulation\\plots\\task8_stress_scenario.png",
+    "task9": "C:\\Users\\espct\\Downloads\\ppgcc-redes-fase1\\simulation\\plots\\task9_efficiency.png",
+    "task10": "C:\\Users\\espct\\Downloads\\ppgcc-redes-fase1\\simulation\\plots\\task10_convergence.png",
+    "real_vs_sim": "C:\\Users\\espct\\Downloads\\ppgcc-redes-fase1\\simulation\\plots\\real_vs_simulated.png"
+  },
+  "n_tasks": 10
+}

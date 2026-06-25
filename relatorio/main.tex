@@ -375,24 +375,34 @@ gargalo é o protocolo (RTT e janela) e não o overhead de estabelecimento.
 \label{fig:t5}
 \end{figure}
 
-No Cenário~A (sem perda), a vazão cresce linearmente com $W$ e satura quando
-$W \cdot \text{chunk} / \text{RTT}$ excede a capacidade do enlace.
-No Cenário~B (10\% perda), janelas maiores aumentam o custo das retransmissões.
+No Cenário~A (sem perda), a vazão cresce de forma aproximadamente linear com $W$
+($\text{vazão} \approx W \cdot \text{chunk} \cdot 8 / \text{RTT}$), sem saturar ---
+o modelo não impõe teto de banda, logo cada incremento de $W$ adiciona pacotes em
+voo proporcionalmente. No Cenário~B (10\% perda), observa-se a \textbf{saturação
+teórica}: a vazão cresce até $W\approx32$ e então declina, pois janelas maiores
+ampliam o custo da retransmissão Go-Back-N (toda a janela é reenviada a cada perda).
+O ponto de operação da Fase~1 ($W=8$) situa-se na região de crescimento, indicando
+margem para ganho com janelas maiores em redes sem perda.
 
 \subsubsection{Tarefa 6 — Validação de RTT}
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=.70\textwidth]{task6_rtt_validation.png}
-\caption{Tarefa~6: RTT configurado vs.\ real (Fase~1) vs.\ simulado.}
+\caption{Tarefa~6: RTT configurado vs.\ simulado; RTT real válido apenas no Cenário~A.}
 \label{fig:t6}
 \end{figure}
 
-\textbf{Discrepância identificada:} O RTT real implícito (derivado da vazão medida)
-é $\approx 50\%$ do RTT configurado ($2 \times \text{delay\_tc}$). Isso ocorre
-porque o \texttt{tc qdisc} aplica atraso apenas ao tráfego de saída do contêiner
-cliente (via unidirecional), enquanto o simulador modela canal bidirecional.
-Esta é a principal fonte de divergência quantitativa entre Fase~1 e Fase~2.
+O RTT medido no simulador coincide com o RTT configurado ($2\times\text{delay}$):
+$\approx$20\,ms (A), $\approx$100\,ms (B) e $\approx$200\,ms (C), validando o modelo
+de atraso. \textbf{Discrepância identificada:} no Cenário~A (sem perda), o RTT real
+implícito derivado da vazão é $\approx 11$\,ms --- aproximadamente \emph{metade} do
+RTT configurado ($2\times 10 = 20$\,ms). Isso ocorre porque o \texttt{tc qdisc} aplica
+atraso apenas ao tráfego de saída do contêiner cliente (via unidirecional), enquanto
+o simulador modela um canal bidirecional. Esta é a principal fonte de divergência
+quantitativa de vazão entre Fase~1 e Fase~2. Nos Cenários~B e~C, a estimativa de RTT
+por vazão não é representativa, pois o tempo de transferência é dominado pelas
+retransmissões e pelos \emph{stalls} de timeout, não pela latência de propagação.
 
 \subsubsection{Tarefa 7 — Impacto do Jitter}
 
@@ -403,8 +413,14 @@ Esta é a principal fonte de divergência quantitativa entre Fase~1 e Fase~2.
 \label{fig:t7}
 \end{figure}
 
-Jitter alto ($\sigma > 20$\,ms) provoca aumento de retransmissões por timeout
-prematuro: o RTT instantâneo supera $T=0{,}3$\,s com maior frequência.
+\textbf{Achado:} nas faixas testadas ($\sigma$ de 0 a 50\,ms, com delay médio de
+50\,ms), o jitter tem impacto \emph{desprezível} sobre as retransmissões --- estas
+permanecem $\approx$2.050, dominadas exclusivamente pela perda de 10\%. A razão é a
+ampla margem entre o RTT ($\approx$100\,ms) e o timeout ($T=300$\,ms): mesmo com
+jitter elevado, o RTT instantâneo raramente supera o timeout, evitando retransmissões
+espúrias. A vazão mantém-se estável (variação inferior a 7\%), demonstrando a
+\textbf{robustez do fluxo Go-Back-N a variações de latência} quando o timeout é
+dimensionado com folga adequada sobre o RTT médio.
 
 \subsubsection{Tarefa 8 — Cenário de Estresse (25\% de Perda)}
 
@@ -429,17 +445,22 @@ em ~9 tentativas por janela e degradação severa de vazão.
 
 \begin{table}[H]
 \centering
-\caption{Eficiência do protocolo R-UDP/GBN ($W=8$)}
-\begin{tabular}{cccc}
+\caption{Eficiência do protocolo R-UDP/GBN ($W=8$): pacotes úteis / total enviados}
+\begin{tabular}{ccc}
 \toprule
-\textbf{Cenário} & \textbf{Efic. Real} & \textbf{Efic. Sim.} & \textbf{$(1-p)^W$ teórico} \\
+\textbf{Cenário} & \textbf{Efic. Real (Fase~1)} & \textbf{Efic. Sim. (SimPy)} \\
 \midrule
-A (0\%)   & $\approx$0,999 & $\approx$1,000 & 1,000 \\
-B (10\%)  & $\approx$0,530 & $\approx$0,460 & 0,430 \\
-C (20\%)  & $\approx$0,326 & $\approx$0,170 & 0,168 \\
+A (0\%)   & 0,999 & 1,000 \\
+B (10\%)  & 0,530 & 0,529 \\
+C (20\%)  & 0,326 & 0,333 \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+A eficiência simulada reproduz com alta fidelidade a eficiência real (erro $<2\%$):
+a razão de pacotes úteis cai de $\sim$100\% (sem perda) para $\sim$33\% sob 20\% de
+perda, confirmando o desperdício de banda característico do GBN (retransmissão de
+janela inteira). No Cenário de Estresse (25\%), a eficiência simulada cai para 0,273.
 
 \subsubsection{Tarefa 10 — Convergência Estatística (IC 95\%)}
 
@@ -452,17 +473,35 @@ C (20\%)  & $\approx$0,326 & $\approx$0,170 & 0,168 \\
 
 \begin{table}[H]
 \centering
-\caption{IC 95\% — Vazão (Mbps), $n=30$}
+\caption{IC 95\% — Vazão simulada (Mbps), $n=30$ execuções}
 \begin{tabular}{cccc}
 \toprule
 \textbf{Cenário} & \textbf{Média} & \textbf{$\pm$IC~95\%} & \textbf{CV\%} \\
 \midrule
-A & $\approx$4,48 & $\pm$0,01 & $<1\%$ \\
-B & $\approx$0,19 & $\pm$0,02 & $\sim10\%$ \\
-C & $\approx$0,08 & $\pm$0,01 & $\sim12\%$ \\
+A & 4,849 & $\pm$0,005 & 0,3\% \\
+B & 0,221 & $\pm$0,002 & 2,6\% \\
+C & 0,091 & $\pm$0,001 & 1,6\% \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\begin{table}[H]
+\centering
+\caption{IC 95\% — Retransmissões simuladas, $n=30$ execuções}
+\begin{tabular}{ccc}
+\toprule
+\textbf{Cenário} & \textbf{Média} & \textbf{$\pm$IC~95\%} \\
+\midrule
+A & 0       & $\pm$0     \\
+B & 6.689   & $\pm$80    \\
+C & 15.000  & $\pm$116   \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+O baixo coeficiente de variação ($\text{CV}<3\%$ para vazão) confirma a
+convergência do simulador com 30~execuções, validando a robustez estatística
+das estimativas.
 
 \subsection{Comparação Real vs.\ Simulado}
 
@@ -475,29 +514,34 @@ C & $\approx$0,08 & $\pm$0,01 & $\sim12\%$ \\
 
 \begin{table}[H]
 \centering
-\caption{Resumo comparativo Real vs.\ Simulado — Cenários A, B, C}
+\caption{Resumo comparativo Real (Fase~1) vs.\ Simulado (SimPy), $n=30$}
 \begin{tabular}{ccccc}
 \toprule
 \textbf{Cen.} & \textbf{Vazão Real} & \textbf{Vazão Sim.} & \textbf{Retrans Real} & \textbf{Retrans Sim.} \\
 \midrule
-A & 7,88\,Mbps & $\approx$4,48\,Mbps & $\sim$1 & $\sim$0 \\
-B & 0,26\,Mbps & $\approx$0,19\,Mbps & 6.652 & $\sim$4.200 \\
-C & 0,11\,Mbps & $\approx$0,08\,Mbps & 15.218 & $\sim$12.000 \\
+A & 7,88\,Mbps & 4,85\,Mbps & $\sim$2  & 0 \\
+B & 0,26\,Mbps & 0,22\,Mbps & 6.652    & 6.689 \\
+C & 0,11\,Mbps & 0,09\,Mbps & 15.218   & 15.000 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \textbf{Análise das discrepâncias:}
 \begin{itemize}
-  \item \textbf{Vazão:} real $\approx 1{,}76\times$ maior que simulado. O simulador
-    usa RTT bidirecional ($2\mu_d$), enquanto o tc qdisc aplica atraso apenas
-    na direção cliente$\to$servidor. RTT real efetivo $\approx \mu_d$, não $2\mu_d$.
-  \item \textbf{Retransmissões:} simulador subestima ($\sim$37\% abaixo). A Fase~1
-    incluiu timeouts espúrios gerados por variações do scheduler do kernel Linux.
-  \item \textbf{Cenário A:} o sistema real apresentou retransmissões espúrias
-    ($T=0{,}3$\,s $\gg$ RTT~real~$\approx 11$\,ms), mas o simulador com RTT~simulado
-    $\approx 20$\,ms produz zero retransmissões — evidenciando a discrepância
-    de modelagem do RTT.
+  \item \textbf{Retransmissões (excelente aderência):} nos Cenários B e C, o
+    simulador reproduz as retransmissões reais com erro inferior a 1,5\%
+    (6.689 vs.\ 6.652 em B; 15.000 vs.\ 15.218 em C). Isso valida o modelo de
+    perda de Bernoulli e a dinâmica de retransmissão Go-Back-N.
+  \item \textbf{Vazão (subestimação por RTT bidirecional):} o simulador subestima
+    a vazão por fator de $1{,}2\times$ (Cenários B/C) a $1{,}6\times$ (Cenário~A).
+    O simulador modela RTT bidirecional ($2\mu_d$), enquanto o \texttt{tc qdisc}
+    da Fase~1 aplica atraso apenas na direção cliente$\to$servidor; logo o RTT real
+    efetivo aproxima-se de $\mu_d$, não $2\mu_d$.
+  \item \textbf{Cenário A (timeouts espúrios reais):} o sistema real apresentou
+    raras retransmissões espúrias por variações do scheduler do kernel Linux
+    ($T=0{,}3$\,s vs.\ RTT~real~$\approx 11$\,ms), enquanto o modelo estocástico
+    determinístico produz zero retransmissões sob 0\% de perda — a diferença
+    quantifica o ruído do ambiente real ausente no simulador.
 \end{itemize}
 
 %% ─────────────────────────────────────────────────────────────────────────
@@ -509,10 +553,11 @@ comparativa TCP vs.\ R-UDP/GBN com validação cruzada via \texttt{tcpdump}; e
 
 Principais achados: (1)~TCP supera GBN por $\sim103\times$ no Cenário~A, com
 28.032 retransmissões espúrias por $T=0{,}3$\,s agressivo; (2)~GBN apresenta
-latência $3{,}4\times$ superior no Cenário~C; (3)~o simulador reproduz
-comportamento qualitativo, mas subestima vazão por fator $\sim1{,}76\times$ —
-atribuído ao modelo bidirecional vs.\ unidirecional do tc qdisc; (4)~IC~95\%
-com 30 execuções confirma convergência do simulador ($\text{CV}<12\%$).
+latência $3{,}4\times$ superior no Cenário~C; (3)~o simulador SimPy reproduz as
+retransmissões reais com erro inferior a 1,5\% (Cenários B e C), validando o
+modelo de perda de Bernoulli, embora subestime a vazão por fator $1{,}2$--$1{,}6\times$
+devido ao modelo de RTT bidirecional vs.\ unidirecional do tc qdisc; (4)~IC~95\%
+com 30 execuções confirma a convergência do simulador ($\text{CV}<3\%$ para vazão).
 
 \vspace{4pt}
 \noindent\textbf{Recursos:}\\

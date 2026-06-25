@@ -34,7 +34,7 @@ def demo_confidence_intervals():
     """Mostra IC 95% para cada cenário com 30 execuções."""
     print("\n── IC 95% — 30 Execuções por Cenário ──")
     for sc, p in [('A', SCENARIOS['A']), ('B', SCENARIOS['B']), ('C', SCENARIOS['C'])]:
-        print(f"\nCenário {sc} ({p['loss_prob']*100:.0f}% perda / {p['delay_mean']*1000:.0f}ms):")
+        print(f"\nCenário {sc} ({p['loss_prob']*100:.0f}% perda / {p['delay_mean_s']*1000:.0f}ms):")
         res = run_multiple(n_runs=30, seed_start=0, **p)
         for metric in ['throughput_mbps', 'retransmissions', 'rtt_mean']:
             st = stats_ci95(res[metric])

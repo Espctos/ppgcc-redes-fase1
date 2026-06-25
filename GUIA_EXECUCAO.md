@@ -255,16 +255,83 @@ docker compose -f docker/docker-compose.yml down
 
 ---
 
-## Parte 8 — Compilar o Relatório LaTeX (Overleaf)
+## Parte 8 — Fase 2: Simulação Estocástica (SimPy)
+
+A Fase 2 **não requer Docker**. É um simulador de eventos discretos em Python puro
+que espelha o protocolo R-UDP/GBN da Fase 1 e executa as 10 tarefas de validação.
+
+### 8.1 Instalar dependências (máquina host)
+
+```bash
+pip install simpy numpy matplotlib seaborn scipy
+```
+
+### 8.2 Executar a simulação
+
+```bash
+# Demonstração rápida — uma execução por cenário
+python simulation/run_simulation.py --demo
+
+# Intervalos de confiança 95% (30 execuções por cenário)
+python simulation/run_simulation.py --ci
+
+# TODAS as 10 tarefas + gráficos (salvos em simulation/plots/)
+python simulation/run_simulation.py --all
+```
+
+> No Windows, se aparecer erro de acentuação no console, defina
+> `set PYTHONIOENCODING=utf-8` (cmd) ou `$env:PYTHONIOENCODING="utf-8"` (PowerShell)
+> antes de rodar.
+
+### 8.3 As 10 Tarefas de Validação (gráficos gerados)
+
+| Tarefa | Arquivo gerado | Descrição |
+|--------|----------------|-----------|
+| 1 | `task1_delay_modeling.png` | Modelagem de atraso N(μ,σ²) |
+| 2 | `task2_bernoulli_loss.png` | Perda de Bernoulli vs tc |
+| 3 | `task3_timeout_simulation.png` | Retransmissões Real vs Simulado |
+| 4 | `task4_throughput_curve.png` | Curva de vazão 1MB–100MB |
+| 5 | `task5_window_sensitivity.png` | Sensibilidade da janela W |
+| 6 | `task6_rtt_validation.png` | Validação de RTT |
+| 7 | `task7_jitter_impact.png` | Impacto do jitter |
+| 8 | `task8_stress_scenario.png` | Cenário de estresse (25%) |
+| 9 | `task9_efficiency.png` | Análise de eficiência |
+| 10 | `task10_convergence.png` | Convergência IC 95% (30 runs) |
+| — | `real_vs_simulated.png` | **Comparação Real vs Simulado** |
+
+### 8.4 Notebook Colab da Fase 2
+
+O notebook `analysis/analysis_fase2.ipynb` é autocontido (define o simulador e roda
+todas as tarefas). Abra no Colab via **File → Upload notebook** e execute
+**Runtime → Run all**. Não requer montar o Drive.
+
+### 8.5 Principais resultados da validação
+
+| Cenário | Vazão Real | Vazão Sim. | Retrans Real | Retrans Sim. |
+|---------|-----------|-----------|--------------|--------------|
+| A | 7,88 Mbps | 4,85 Mbps | ~2 | 0 |
+| B | 0,26 Mbps | 0,22 Mbps | 6.652 | 6.689 |
+| C | 0,11 Mbps | 0,09 Mbps | 15.218 | 15.000 |
+
+O simulador reproduz as **retransmissões reais com erro < 1,5%** (Cenários B e C).
+A subestimação de vazão (~1,2–1,6×) deve-se ao modelo de RTT bidirecional do
+simulador vs. atraso unidirecional do `tc qdisc`.
+
+---
+
+## Parte 9 — Compilar o Relatório LaTeX (Overleaf)
 
 1. Acesse [overleaf.com](https://overleaf.com) → **New Project → Blank Project**
 2. Substitua o `main.tex` pelo conteúdo de `relatorio/main.tex`
-3. Faça upload de todos os `.png` de `data/plots/` como arquivos no projeto
+3. Faça upload de **todos os `.png` da pasta `relatorio/`** (já contém imagens das Fases 1 e 2)
 4. No LaTeX, os `\includegraphics` referenciam apenas o nome do arquivo:
    ```latex
    \includegraphics[width=0.85\textwidth]{throughput.png}
    ```
 5. Clique em **Recompile**
+
+> A pasta `relatorio/` já está pronta para o Overleaf: contém o `main.tex` e
+> as 18 imagens (`.png`) referenciadas no documento.
 
 ---
 

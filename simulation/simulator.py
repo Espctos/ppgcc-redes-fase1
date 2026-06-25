@@ -19,10 +19,10 @@ FILE_SIZE_10MB = 10 * 1024 * 1024  # 10 MB (tamanho do arquivo de teste)
 
 # ── Parâmetros dos cenários (espelham tc qdisc netem da Fase 1) ───────────────
 SCENARIOS: Dict[str, Dict[str, float]] = {
-    'A': {'loss_prob': 0.00, 'delay_mean': 0.010, 'delay_std': 0.002},  # 0%  / 10ms
-    'B': {'loss_prob': 0.10, 'delay_mean': 0.050, 'delay_std': 0.005},  # 10% / 50ms
-    'C': {'loss_prob': 0.20, 'delay_mean': 0.100, 'delay_std': 0.010},  # 20% / 100ms
-    'S': {'loss_prob': 0.25, 'delay_mean': 0.100, 'delay_std': 0.010},  # Stress: 25%
+    'A': {'loss_prob': 0.00, 'delay_mean_s': 0.010, 'delay_std_s': 0.002},  # 0%  / 10ms
+    'B': {'loss_prob': 0.10, 'delay_mean_s': 0.050, 'delay_std_s': 0.005},  # 10% / 50ms
+    'C': {'loss_prob': 0.20, 'delay_mean_s': 0.100, 'delay_std_s': 0.010},  # 20% / 100ms
+    'S': {'loss_prob': 0.25, 'delay_mean_s': 0.100, 'delay_std_s': 0.010},  # Stress: 25%
 }
 
 
@@ -123,6 +123,11 @@ def simulate_gbn(
         """
         Processo SimPy do emissor GBN.
         Usa yield env.timeout() para avançar o relógio de simulação.
+
+        ACKs são CUMULATIVOS (semântica GBN): um ACK com seq=k confirma
+        todos os pacotes [0..k]. Como os atrasos de cada pacote são
+        independentes, os ACKs podem chegar fora de ordem no emissor;
+        a regra base = max(base, ack_seq + 1) trata isso corretamente.
         """
         timer_start = env.now
         h = st['ack_heap']
@@ -135,58 +140,41 @@ def simulate_gbn(
                 tx_packet(st['next_seq'])
                 st['next_seq'] += 1
 
-            # 2. Descartar ACKs obsoletos (seq < base já processados)
-            while h and h[0][1] < st['base']:
-                heapq.heappop(h)
-
-            # 3. Determinar próximo evento: ACK ou timeout
+            # 2. Próximo evento: ACK mais cedo ou timeout
             timeout_abs  = timer_start + timeout_s
             earliest_ack = h[0][0] if h else float('inf')
-            next_event   = min(earliest_ack, timeout_abs)
 
-            # 4. Avançar o relógio de simulação (SimPy yield)
-            wait = max(0.0, next_event - env.now)
-            yield env.timeout(wait)
-
-            # 5a. ACK recebido antes do timeout → avança janela
-            if earliest_ack <= timeout_abs and h:
-                _, seq = heapq.heappop(h)
-
-                # Coletar ACKs co-chegantes (mesmo instante)
+            if earliest_ack <= timeout_abs:
+                # ── Chegada de ACK ─────────────────────────────────────────
+                yield env.timeout(max(0.0, earliest_ack - env.now))
                 now = env.now
-                arrived = {seq}
-                stale = []
+
+                # Drenar todos os ACKs já chegados; aplicar semântica cumulativa
+                max_ack = -1
                 while h and h[0][0] <= now:
-                    t2, s2 = heapq.heappop(h)
-                    if s2 >= st['base']:
-                        arrived.add(s2)
-                    else:
-                        stale.append((t2, s2))
-                for item in stale:
-                    heapq.heappush(h, item)
+                    _, s = heapq.heappop(h)
+                    if s > max_ack:
+                        max_ack = s
 
-                # Avançar base pelos ACKs cumulativos consecutivos
-                while st['base'] in arrived and st['base'] < total_pkts:
-                    st['base'] += 1
-                    st['acks_received'] += 1
-                timer_start = env.now
+                if max_ack >= st['base']:
+                    # ACK cumulativo avança a base e reinicia o timer
+                    st['acks_received'] += (max_ack + 1 - st['base'])
+                    st['base'] = max_ack + 1
+                    timer_start = env.now
+                # Se max_ack < base (ACKs obsoletos), não reinicia o timer:
+                # o timeout continuará contando a partir de timer_start.
 
-            # 5b. Timeout → Go-Back-N: retransmite toda a janela
             else:
-                # Limpar ACKs pendentes da janela atual (ficaram obsoletos)
-                st['ack_heap'] = [(t, s) for t, s in h if s < st['base']]
-                heapq.heapify(st['ack_heap'])
-                h = st['ack_heap']
-
-                # Resetar estado do receptor para base (receptor GBN faz o mesmo)
-                st['recv_expected'] = st['base']
-
-                # Retransmitir pacotes [base, next_seq)
+                # ── Timeout → Go-Back-N: retransmite janela [base, next_seq) ─
+                yield env.timeout(max(0.0, timeout_abs - env.now))
                 for s in range(st['base'], st['next_seq']):
                     tx_packet(s)
                     st['retransmissions'] += 1
-
                 timer_start = env.now
+
+            # Guarda de segurança contra seeds patológicas (perda muito alta)
+            if st['retransmissions'] > 50_000_000:
+                break
 
     # Registrar e executar processo SimPy
     env.process(gbn_sender(env))
@@ -194,7 +182,8 @@ def simulate_gbn(
 
     # ── Computar métricas finais ──────────────────────────────────────────────
     transfer_time   = env.now
-    throughput_mbps = (file_size_bytes / transfer_time / 1e6) if transfer_time > 0 else 0.0
+    # Vazão em megabits/s (Mbps) — consistente com a Fase 1 (bytes × 8)
+    throughput_mbps = (file_size_bytes * 8 / transfer_time / 1e6) if transfer_time > 0 else 0.0
     rtt             = st['rtt_samples']
 
     result = {
