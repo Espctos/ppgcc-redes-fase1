@@ -13,7 +13,7 @@
 | 📁 Repositório GitHub | https://github.com/Espctos/ppgcc-redes-fase1 |
 | 📊 Google Colab — Fase 1 | https://colab.research.google.com/drive/1HWf3P__ADtXFDSOxaJB1Ba_m5-DqDNkv?usp=sharing |
 | 💾 Google Drive (PCAPs) | https://drive.google.com/file/d/1_tPRM87EihzD0UE5tKY-g80yRTOlFOAG/view?usp=sharing |
-| 📓 Google Colab — Fase 2 (SimPy) | `analysis/analysis_fase2.ipynb` (abrir no Colab pelo GitHub) |
+| 📓 Google Colab — Fase 2 (SimPy) | https://colab.research.google.com/github/Espctos/ppgcc-redes-fase1/blob/main/analysis/analysis_fase2.ipynb |
 
 > **Fase 1** — Entregue em 29/05/2026  
 > **Fase 2** — Entregue em 25/06/2026
